@@ -1,0 +1,82 @@
+#!/bin/bash
+
+## command /opt/teradata/python3
+
+## ARGPARSE
+if [[ X$1 = X ]]
+then
+	echo "Enter the full path to the root source"
+	read SOURCE
+else
+	SOURCE=$1
+fi
+
+if [[ ! -d $SOURCE ]]
+then
+	echo "Path is not a directory"
+	echo $SOURCE
+	exit 1
+fi
+SOURCE=$(echo $SOURCE | sed 's/\/$//' -)
+# ADJUSTMENT for ending / on directory names
+CUT=$(echo -n $SOURCE | wc -m)
+CUT=$(expr $CUT + 1)
+
+## DIRECTORIES
+find $SOURCE -type d > /tmp/formatted$$
+# create the directory itself
+for i in `cat /tmp/formatted$$`
+do
+	directory=`echo $i | cut -c ${CUT}-`
+	echo '	%{__mkdir} -p %{buildroot}%{prefix}'$directory
+done
+rm -f /tmp/formatted$$
+
+## SYMLINKS
+cat <<-'EOF' >/tmp/formatted$$
+#!/bin/bash
+
+ARRAY=($(ls -l $1))
+LINKNAME=$(echo ${ARRAY[8]} | cut -c CUTOFF-)
+TARGET=${ARRAY[10]}
+BASE=$(dirname $LINKNAME)
+
+#echo $LINKNAME
+#echo $TARGET
+
+PERMS=`stat -c "%a" $1`
+if [[ $? -ne 0 ]]
+then
+	(>&2 echo STAT FAIL)
+	exit 1
+fi
+echo '	ln -sf %{prefix}'$BASE'/'${TARGET}' %{buildroot}%{prefix}'${LINKNAME}
+EOF
+sed -i "s/CUTOFF/$CUT/g" /tmp/formatted$$
+chmod +x /tmp/formatted$$
+find $SOURCE -type l -exec /tmp/formatted$$ {} \;
+rm -f /tmp/formatted$$
+
+## FILES
+cat <<-'EOF' >/tmp/formatted$$
+#!/bin/bash
+
+FILE=$(echo $1 | cut -c CUTOFF-)
+DIRECTORY=`dirname $FILE 2>/dev/null`
+if [[ $? -ne 0 ]]
+then
+	exit 1
+fi
+PERMS=`stat -c "%a" $1`
+if [[ $? -ne 0 ]]
+then
+	(>&2 echo STAT FAIL)
+	exit 1
+fi
+echo '	%{__install} -m '${PERMS}' -D %{S:0}'${FILE}' %{buildroot}%{prefix}'$DIRECTORY
+EOF
+sed -i "s/CUTOFF/$CUT/g" /tmp/formatted$$
+chmod +x /tmp/formatted$$
+
+find $SOURCE -type f -exec /tmp/formatted$$ {} \;
+rm -f /tmp/formatted$$
