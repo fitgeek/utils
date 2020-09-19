@@ -1,0 +1,5 @@
+# client ldap configuration file
+server = ldap-sd.td.teradata.com
+port = 389
+service account = cn=da230105,ou=application accounts,dc=td,dc=teradata,dc=com
+service password = secret-password # yes that's right!
