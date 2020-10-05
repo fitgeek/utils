@@ -1,4 +1,12 @@
 # Utilities
+## Pyramid Test
+### pyramid.js
+```
+Run server
+# node pyramid.js
+Test Server
+# curl localhost:3000/banana
+```
 ## rpmbuild automation
 ### Automatically create a %install spec section for rpmbuild
 Remove the tedious spec file editing chore of adding information for each file within an rpm.  
