@@ -15,6 +15,20 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
  *    b. diff between old and new file system state
  * 2. diff between systems to determine out of sync issues.
  *    a. does require pruning for node_modules libraries and .files
+ *
+      type          file type
+      path          full path
+      sb.st_ino     inode number
+      sb.st_mode    file mode
+      sb.st_nlink   number of links
+      sb.st_uid     user id of owner
+      sb.st_gid     group id of owner
+      sb.st_blksize filesystem preferred block size
+      sb.st_size    file size in bytes
+      sb.st_blocks  number of 512 byte blocks allocated for this file (linux)
+      sb.st_ctime   creation time
+      sb.st_atime   access time
+      sb.st_mtime   modification time
  */
 #include <stdio.h>
 #include <time.h>
@@ -32,19 +46,25 @@ void listit(char *name) {
     }
 
     while((dp = readdir(dir)) != NULL) {
+        if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0) {
+            continue;
+        }
         char path[BUFSIZ];
+        
         strcpy(path, name);
-        strcat(path, "/");
+        if (strcmp(name, "/") != 0) strcat(path, "/");
         strcat(path, dp->d_name);
 
+        char type[4] = "UNKN";
         struct stat sb;
-        stat(path, &sb);
+        lstat(path, &sb);
         switch (sb.st_mode & S_IFMT) {
         case S_IFDIR:
             if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0) {
                 break;
             }
-            printf("%s|%ld|%lo|%ld|%ld|%ld|%ld|%lld|%lld|%ld|%ld|%ld\n",
+            if (strcmp(name, "/dev/fd") == 0) break;
+            printf("FDIR|%s|%ld|%lo|%ld|%ld|%ld|%ld|%lld|%lld|%ld|%ld|%ld\n",
                 path,
                 (long) sb.st_ino,
                 (unsigned long) sb.st_mode,
@@ -60,12 +80,19 @@ void listit(char *name) {
             listit(path);
             break;
         case S_IFCHR:
+            if (type[0] == 'U') strcpy(type, "FCHR");
         case S_IFBLK:
+            if (type[0] == 'U') strcpy(type, "FBLK");
         case S_IFIFO:
+            if (type[0] == 'U') strcpy(type, "FIFO");
         case S_IFLNK:
+            if (type[0] == 'U') strcpy(type, "FLNK");
         case S_IFSOCK:
+            if (type[0] == 'U') strcpy(type, "SOCK");
         case S_IFREG:
-            printf("%s|%ld|%lo|%ld|%ld|%ld|%ld|%lld|%lld|%ld|%ld|%ld\n",
+            if (type[0] == 'U') strcpy(type, "FREG");
+            printf("%s|%s|%ld|%lo|%ld|%ld|%ld|%ld|%lld|%lld|%ld|%ld|%ld\n",
+                type,
                 path,
                 (long) sb.st_ino,
                 (unsigned long) sb.st_mode,
