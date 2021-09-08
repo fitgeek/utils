@@ -14,7 +14,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
  *    a. provides a static picture prior to file system changes
  *    b. diff between old and new file system state
  * 2. diff between systems to determine out of sync issues.
- *    a. does require pruning for node_modules libraries and .files
+ *    a. does require pruning for node_modules libraries and .files, etc.
+ * 3. Testing and Validation
+ * 4. Auditing
  *
       type          file type
       path          full path
