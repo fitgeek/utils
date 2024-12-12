@@ -1,0 +1,151 @@
+-- ON CONFLICT template https://www.dbvis.com/thetable/postgresql-upsert-insert-on-conflict-guide/
+-- Change index, view, table names, and targets to your liking.
+-- 
+-- The triple unique index 
+-- unit   system   feed
+-- null   null     string
+--
+-- Get trigger definition for rollback
+-- SELECT pg_get_triggerdef((SELECT oid FROM pg_trigger WHERE tgname='dsl_unit_insert'));
+--
+-- Cloning may require these steps
+-- postgres=> drop database ncsa_rhernandez;
+-- ERROR:  database "ncsa_rhernandez" is being accessed by other users
+-- DETAIL:  There is 1 other session using the database.
+-- postgres=> select * from pg_stat_activity where datname='ncsa_rhernandez';
+-- postgres=> select pg_terminate_backend(pid);
+ -- pg_terminate_backend 
+-- ----------------------
+-- t
+-- (1 row)
+
+--
+-- Test table and indexes
+--
+DROP TABLE IF EXISTS dsl_test;
+CREATE TABLE dsl_test (
+  id INT NOT NULL PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  uic TEXT,
+  system INTEGER,
+  feed TEXT NOT NULL,
+  updated TIMESTAMP WITH TIME ZONE
+);
+-- Requires a unique index or the Trigger will not work
+DROP INDEX IF EXISTS dsl_test_uic_system_feed_key;
+CREATE UNIQUE INDEX dsl_test_uic_system_feed_key on dsl_test (uic, system, feed) NULLS NOT DISTINCT;
+
+--
+-- View creation
+--
+DROP VIEW IF EXISTS dsl_test_unit_view;
+CREATE VIEW dsl_test_unit_view
+  AS
+  SELECT d.id, d.uic, d.system, d.feed, d.updated
+  FROM dsl_test d;
+--
+DROP VIEW IF EXISTS dsl_test_system_view;
+CREATE VIEW dsl_test_system_view
+  AS
+  SELECT d.id, d.uic, d.system, d.feed, d.updated
+  FROM dsl_test d;
+
+--
+-- UNIT insert
+-- on conflict with the triple index just update the timestamp for "updated"
+-- This timestamp will be the last time the feed "talked" about a unit
+--
+CREATE OR REPLACE FUNCTION dsl_test_unit_function()
+ RETURNS trigger
+AS
+$$
+BEGIN
+INSERT INTO dsl_test (system, uic, feed, updated) values (null, NEW.uic, NEW.feed, NEW.updated)
+  ON CONFLICT (system, uic, feed) DO UPDATE SET updated=excluded.updated;
+return NEW;
+END;
+$$
+LANGUAGE plpgsql;
+
+--
+-- SYSTEM insert
+-- on conflict with the triple index just update the timestamp for "updated"
+-- This timestamp will be the last time the feed "talked" about a system
+--
+CREATE OR REPLACE FUNCTION dsl_test_system_function()
+ RETURNS trigger
+AS
+$$
+BEGIN
+INSERT INTO dsl_test (system, uic, feed, updated) values (NEW.system, null, NEW.feed, NEW.updated)
+  ON CONFLICT (system, uic, feed) DO UPDATE SET updated=excluded.updated;
+return NEW;
+END;
+$$
+LANGUAGE plpgsql;
+
+--
+CREATE OR REPLACE TRIGGER dsl_unit_trigger
+  INSTEAD OF INSERT
+  ON dsl_test_unit_view
+  FOR EACH ROW
+  EXECUTE FUNCTION dsl_test_unit_function();
+
+CREATE OR REPLACE TRIGGER dsl_system_trigger
+  INSTEAD OF INSERT
+  ON dsl_test_system_view
+  FOR EACH ROW
+  EXECUTE FUNCTION dsl_test_system_function();
+
+
+-- ERRORS ERRORS ERRORS ERRORS ERRORS ERRORS ERRORS ERRORS ERRORS ERRORS
+--
+-- ERRORS stuff that didn't work
+--
+CREATE OR REPLACE FUNCTION dsl_test_function()
+  RETURNS TRIGGER
+AS
+$$
+BEGIN
+    IF EXISTS NEW.system THEN
+        INSERT INTO dsl_test_view(uic, system, feed, updated)
+        VALUES(NEW.uic, NEW.system, NEW.feed, NEW.updated);
+    ELSE
+        INSERT INTO dsl_test_view(uic, system, feed, updated)
+        VALUES(NEW.uic, NULL, NEW.feed, NEW.updated);
+    END IF
+    RETURN NEW;
+END;
+$$
+LANGUAGE PLPGSQL;
+-- ERRORS
+CREATE OR REPLACE FUNCTION dsl_test_function()
+  RETURNS TRIGGER
+AS
+$$
+BEGIN
+    IF NEW.system THEN
+        INSERT INTO dsl_test_view(uic, system, feed, updated)
+        VALUES(NEW.uic, NEW.system, NEW.feed, NEW.updated);
+    EXCEPTION
+        INSERT INTO dsl_test_view(uic, system, feed, updated)
+        VALUES(NEW.uic, NULL, NEW.feed, NEW.updated);
+    END IF
+    RETURN NEW;
+END;
+$$
+LANGUAGE plpgsql;
+
+-- TESTING TESTING TESTING TESTING TESTING TESTING TESTING TESTING TESTING
+
+INSERT INTO dsl_test_unit_view(uic, feed, updated)
+VALUES('UNIT', 'FEEDNAME', CURRENT_TIMESTAMP);
+
+-- Check the values
+SELECT * from dsl_test_unit_view;
+
+-- Repeat the insert
+INSERT INTO dsl_test_unit_view(uic, feed, updated)
+VALUES('UNIT', 'FEEDNAME', CURRENT_TIMESTAMP);
+
+-- Check the "updated" timestamp changes
+SELECT * from dsl_test_unit_view;
